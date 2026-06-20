@@ -5,3 +5,4 @@ MIDlet-Vendor: Classic Port
 MIDlet-Version: 1.0.0
 MicroEdition-Profile: MIDP-2.0
 MicroEdition-Configuration: CLDC-1.1
+MIDlet-Permissions: javax.microedition.io.Connector.socket

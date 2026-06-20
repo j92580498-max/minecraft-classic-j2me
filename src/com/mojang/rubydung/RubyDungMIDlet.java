@@ -8,7 +8,7 @@ public class RubyDungMIDlet extends MIDlet {
 
     protected void startApp() {
         if (canvas == null) {
-            canvas = new GameCanvas();
+            canvas = new GameCanvas(this);
             Display.getDisplay(this).setCurrent(canvas);
             canvas.start();
         }

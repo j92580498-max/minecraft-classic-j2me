@@ -1,6 +1,8 @@
 package com.mojang.rubydung.level;
 
 import com.mojang.rubydung.HitResult;
+import com.mojang.rubydung.Mob;
+import com.mojang.rubydung.Particle;
 import com.mojang.rubydung.Player;
 import com.mojang.rubydung.level.tile.Tile;
 
@@ -10,6 +12,8 @@ import com.mascotcapsule.micro3d.v3.FigureLayout;
 import com.mascotcapsule.micro3d.v3.Graphics3D;
 import com.mascotcapsule.micro3d.v3.Texture;
 import com.mascotcapsule.micro3d.v3.Vector3D;
+
+import java.util.Vector;
 
 /**
  * Mascot Capsule Micro3D V3 software renderer for the Classic world.
@@ -43,12 +47,14 @@ public class WorldRenderer {
     private final Effect3D effectOpaque;
     private final Effect3D effectTrans;
     private final AffineTrans view;
+    private float camRightX = 1.0f, camRightZ = 0.0f;
 
     // Scratch batch buffers (4 verts * 3 coords per quad).
     private final int[] vc = new int[BATCH * 4 * 3];
     private final int[] tc = new int[BATCH * 4 * 2];
     private final int[] col = new int[BATCH];
     private final int[] nrm = new int[] {0, 0, ONE};
+    private static final int[] EMPTY_TC = new int[0];
     private int quadCount;
     private int curCommand;
 
@@ -72,6 +78,14 @@ public class WorldRenderer {
         Graphics3D.PDATA_TEXURE_COORD |
         Graphics3D.PDATA_COLOR_PER_FACE |
         Graphics3D.PATTR_BLEND_HALF;  // 50% blend for water / ice
+
+    // Flat (untextured) per-face colour, used for mob cubes.
+    private final int cmdFlat =
+        Graphics3D.PRIMITVE_QUADS |
+        Graphics3D.PDATA_NORMAL_NONE |
+        Graphics3D.PDATA_TEXURE_COORD_NONE |
+        Graphics3D.PDATA_COLOR_PER_FACE |
+        Graphics3D.PATTR_BLEND_NORMAL;
 
     public WorldRenderer(Level level, Graphics3D g3d, Texture texture) {
         this.level = level;
@@ -101,6 +115,8 @@ public class WorldRenderer {
         Vector3D up = new Vector3D(0, ONE, 0);
 
         view.lookAt(pos, look, up);
+        camRightX = (float) Math.cos(yaw);
+        camRightZ = (float) Math.sin(yaw);
         layout.setCenter(centerX, centerY);
         layout.setAffineTrans(view);
         layout.setPerspective(100, 32767, 800);
@@ -274,12 +290,246 @@ public class WorldRenderer {
             System.arraycopy(col, 0, cols, 0, cols.length);
         }
         Effect3D fx = (curCommand == cmdTrans) ? effectTrans : effectOpaque;
+        int[] texArg = (curCommand == cmdFlat) ? new int[0] : texs;
         g3d.renderPrimitives(texture, 0, 0, layout, fx,
-            curCommand, quadCount, verts, nrm, texs, cols);
+            curCommand, quadCount, verts, nrm, texArg, cols);
         quadCount = 0;
     }
 
+    /**
+     * Render each live mob as a small set of flat-shaded boxes (head, body,
+     * two arms, two legs) with a simple walk swing. Boxes are built in the
+     * mob's local space then rotated by body yaw around its position.
+     */
+    public void renderMobs(java.util.Vector mobs, float alpha) {
+        if (mobs == null || mobs.size() == 0) return;
+        beginBatch(cmdFlat);
+        for (int i = 0; i < mobs.size(); ++i) {
+            Mob m = (Mob) mobs.elementAt(i);
+            if (m.isDead()) continue;
+            renderMob(m, alpha);
+        }
+        flushBatch();
+        curCommand = cmdSprite;
+    }
+
+    public void renderNetPlayers(com.mojang.rubydung.net.NetPlayer[] players, float alpha) {
+        if (players == null) return;
+        beginBatch(cmdFlat);
+        for (int i = 0; i < players.length; ++i) {
+            com.mojang.rubydung.net.NetPlayer p = players[i];
+            if (p == null) continue;
+            renderNetPlayer(p, alpha);
+        }
+        flushBatch();
+        curCommand = cmdSprite;
+    }
+
+    private void renderNetPlayer(com.mojang.rubydung.net.NetPlayer p, float alpha) {
+        float mx = p.xo + (p.x - p.xo) * alpha;
+        float my = p.yo + (p.y - p.yo) * alpha;
+        float mz = p.zo + (p.z - p.zo) * alpha;
+        // server feet position; model 1.8 tall
+        float feetY = my;
+        double yaw = p.yaw * 360.0 / 256.0 * Math.PI / 180.0;
+        float sin = (float) Math.sin(yaw);
+        float cos = (float) Math.cos(yaw);
+
+        int skin = 0xC8A064;   // head/arms
+        int body = 0x5050C0;   // shirt (blue, to distinguish from green zombies)
+        int legs = 0x303060;   // trousers
+
+        box(mx, mz, feetY + 0.75f, feetY + 1.5f, 0.25f, 0.125f, 0f, 0f, sin, cos, body);
+        box(mx, mz, feetY + 1.5f, feetY + 2.0f, 0.25f, 0.25f, 0f, 0f, sin, cos, skin);
+        box(mx, mz, feetY, feetY + 0.75f, 0.1f, 0.1f, -0.125f, 0f, sin, cos, legs);
+        box(mx, mz, feetY, feetY + 0.75f, 0.1f, 0.1f, 0.125f, 0f, sin, cos, legs);
+        box(mx, mz, feetY + 0.75f, feetY + 1.45f, 0.1f, 0.1f, -0.36f, 0f, sin, cos, skin);
+        box(mx, mz, feetY + 0.75f, feetY + 1.45f, 0.1f, 0.1f, 0.36f, 0f, sin, cos, skin);
+    }
+
+    private void renderMob(Mob m, float alpha) {
+        float mx = m.xo + (m.x - m.xo) * alpha;
+        float my = m.yo + (m.y - m.yo) * alpha;
+        float mz = m.zo + (m.z - m.zo) * alpha;
+        // feet sit at my - 0.9 (H); model is ~1.8 tall.
+        float feetY = my - 0.9f;
+
+        double yaw = m.yRot * Math.PI / 180.0;
+        float sin = (float) Math.sin(yaw);
+        float cos = (float) Math.cos(yaw);
+
+        // limb swing
+        float swing = (float) Math.sin(m.animPos) * 0.6f * m.animSpeed;
+        float swing2 = (float) Math.sin(m.animPos + Math.PI) * 0.6f * m.animSpeed;
+        if (m.animSpeed > 1.2f) m.animSpeed = 1.2f;
+
+        // colours: hurt flashes red, otherwise zombie green/blue
+        int skin = m.hurtTime > 0 ? 0xFF6040 : 0x4A7A43;   // head/arms (skin)
+        int body = m.hurtTime > 0 ? 0xFF6040 : 0x35657C;   // shirt
+        int legs = m.hurtTime > 0 ? 0xFF6040 : 0x2A3B6B;   // trousers
+
+        // body  (0.5 x 0.75 x 0.25), centred, top at 1.5
+        box(mx, mz, feetY + 0.75f, feetY + 1.5f, 0.25f, 0.125f, 0f, 0f, sin, cos, body);
+        // head  (0.5 cube) on top
+        box(mx, mz, feetY + 1.5f, feetY + 2.0f, 0.25f, 0.25f, 0f, 0f, sin, cos, skin);
+        // legs (each 0.2 x 0.75), offset left/right, with swing
+        box(mx, mz, feetY + swing * 0.0f, feetY + 0.75f, 0.1f, 0.1f, -0.125f, swing, sin, cos, legs);
+        box(mx, mz, feetY, feetY + 0.75f, 0.1f, 0.1f, 0.125f, swing2, sin, cos, legs);
+        // arms (each 0.2 x 0.7), at shoulder height, opposite swing
+        box(mx, mz, feetY + 0.75f, feetY + 1.45f, 0.1f, 0.1f, -0.36f, swing2, sin, cos, skin);
+        box(mx, mz, feetY + 0.75f, feetY + 1.45f, 0.1f, 0.1f, 0.36f, swing, sin, cos, skin);
+    }
+
+    /**
+     * Emit one axis-aligned-in-local-space box for a mob limb. cx/cz is the
+     * mob centre; y0/y1 the world vertical span; hw/hd half-width/depth; ox a
+     * sideways offset (left/right of body, in local X); zswing a forward Z
+     * offset used for the walk cycle. sin/cos rotate local (X,Z) by body yaw.
+     */
+    private void box(float cx, float cz, float y0, float y1,
+                     float hw, float hd, float ox, float zswing,
+                     float sin, float cos, int color) {
+        // local corners (before yaw): X in [ox-hw, ox+hw], Z in [zswing-hd, zswing+hd]
+        float lx0 = ox - hw, lx1 = ox + hw;
+        float lz0 = zswing - hd, lz1 = zswing + hd;
+        // rotate the four (x,z) corners by yaw and translate to world
+        float ax = cx + lx0 * cos - lz0 * sin, az = cz + lz0 * cos + lx0 * sin;
+        float bx = cx + lx1 * cos - lz0 * sin, bz = cz + lz0 * cos + lx1 * sin;
+        float cx2 = cx + lx1 * cos - lz1 * sin, cz2 = cz + lz1 * cos + lx1 * sin;
+        float dx = cx + lx0 * cos - lz1 * sin, dz = cz + lz1 * cos + lx0 * sin;
+
+        int top = color;
+        int side = darken(color, 0.8f);
+        int bottom = darken(color, 0.6f);
+
+        // top
+        flatQuad(top,  ax, y1, az,  bx, y1, bz,  cx2, y1, cz2,  dx, y1, dz);
+        // bottom
+        flatQuad(bottom, dx, y0, dz,  cx2, y0, cz2,  bx, y0, bz,  ax, y0, az);
+        // 4 sides
+        flatQuad(side, ax, y1, az,  bx, y1, bz,  bx, y0, bz,  ax, y0, az);
+        flatQuad(side, bx, y1, bz,  cx2, y1, cz2, cx2, y0, cz2, bx, y0, bz);
+        flatQuad(side, cx2, y1, cz2, dx, y1, dz,  dx, y0, dz,  cx2, y0, cz2);
+        flatQuad(side, dx, y1, dz,  ax, y1, az,  ax, y0, az,  dx, y0, dz);
+    }
+
+    private int darken(int rgb, float f) {
+        int r = (int) (((rgb >> 16) & 0xFF) * f);
+        int g = (int) (((rgb >> 8) & 0xFF) * f);
+        int b = (int) ((rgb & 0xFF) * f);
+        return (r << 16) | (g << 8) | b;
+    }
+
+    /** Like quad() but with no texture coords (flat per-face colour). */
+    private void flatQuad(int color,
+                          float ax, float ay, float az,
+                          float bx, float by, float bz,
+                          float cx, float cy, float cz,
+                          float dx, float dy, float dz) {
+        if (quadCount >= BATCH) flushBatch();
+        int vi = quadCount * 12;
+        vc[vi]      = (int) (ax * BLOCK); vc[vi + 1]  = (int) (ay * BLOCK); vc[vi + 2]  = (int) (az * BLOCK);
+        vc[vi + 3]  = (int) (bx * BLOCK); vc[vi + 4]  = (int) (by * BLOCK); vc[vi + 5]  = (int) (bz * BLOCK);
+        vc[vi + 6]  = (int) (cx * BLOCK); vc[vi + 7]  = (int) (cy * BLOCK); vc[vi + 8]  = (int) (cz * BLOCK);
+        vc[vi + 9]  = (int) (dx * BLOCK); vc[vi + 10] = (int) (dy * BLOCK); vc[vi + 11] = (int) (dz * BLOCK);
+        col[quadCount] = color;
+        quadCount++;
+    }
+
+    public void renderParticles(java.util.Vector particles, Player p, float alpha) {
+        if (particles == null || particles.size() == 0) return;
+        beginBatch(cmdSprite);
+        float rx = camRightX, rz = camRightZ;
+        for (int i = 0; i < particles.size(); ++i) {
+            Particle pa = (Particle) particles.elementAt(i);
+            if (pa.removed) continue;
+            float px = pa.xo + (pa.x - pa.xo) * alpha;
+            float py = pa.yo + (pa.y - pa.yo) * alpha;
+            float pz = pa.zo + (pa.z - pa.zo) * alpha;
+            float s = 0.1f;
+            // billboard quad facing camera: right vector (rx,0,rz), up (0,1,0)
+            float ax = px - rx * s, az = pz - rz * s;
+            float bx = px + rx * s, bz = pz + rz * s;
+            int b = shade(level.getBrightness((int) px, (int) py, (int) pz));
+            // sub-tile UVs sampled from the block atlas tile
+            int tile = pa.tex;
+            int u0 = (tile % 16) * TILE + (int) (pa.uo * TILE);
+            int v0 = (tile / 16) * TILE + (int) (pa.vo * TILE);
+            int u1 = u0 + 3, v1 = v0 + 3;
+            partQuad(b,
+                ax, py + s, az,  bx, py + s, bz,
+                bx, py - s, bz,  ax, py - s, az,
+                u0, v0, u1, v1);
+        }
+        flushBatch();
+        curCommand = cmdSprite;
+    }
+
+    private void partQuad(int color,
+                          float ax, float ay, float az,
+                          float bx, float by, float bz,
+                          float cx, float cy, float cz,
+                          float dx, float dy, float dz,
+                          int u0, int v0, int u1, int v1) {
+        if (quadCount >= BATCH) flushBatch();
+        int vi = quadCount * 12;
+        vc[vi]      = (int) (ax * BLOCK); vc[vi + 1]  = (int) (ay * BLOCK); vc[vi + 2]  = (int) (az * BLOCK);
+        vc[vi + 3]  = (int) (bx * BLOCK); vc[vi + 4]  = (int) (by * BLOCK); vc[vi + 5]  = (int) (bz * BLOCK);
+        vc[vi + 6]  = (int) (cx * BLOCK); vc[vi + 7]  = (int) (cy * BLOCK); vc[vi + 8]  = (int) (cz * BLOCK);
+        vc[vi + 9]  = (int) (dx * BLOCK); vc[vi + 10] = (int) (dy * BLOCK); vc[vi + 11] = (int) (dz * BLOCK);
+        int ti = quadCount * 8;
+        tc[ti]     = u0; tc[ti + 1] = v1;
+        tc[ti + 2] = u0; tc[ti + 3] = v0;
+        tc[ti + 4] = u1; tc[ti + 5] = v0;
+        tc[ti + 6] = u1; tc[ti + 7] = v1;
+        col[quadCount] = color;
+        quadCount++;
+    }
+
     public void renderHit(HitResult h) {
-        // Targeted-block highlight intentionally omitted for performance.
+        if (h == null) return;
+        // 12 edges of the unit cube at (h.x,h.y,h.z), slightly inflated so
+        // the outline sits just outside the block faces (avoids z-fighting).
+        float e = 0.003f;
+        float x0 = h.x - e, y0 = h.y - e, z0 = h.z - e;
+        float x1 = h.x + 1 + e, y1 = h.y + 1 + e, z1 = h.z + 1 + e;
+
+        // 12 segments * 2 verts * 3 coords
+        int[] v = new int[12 * 2 * 3];
+        int i = 0;
+        i = edge(v, i, x0,y0,z0, x1,y0,z0);
+        i = edge(v, i, x1,y0,z0, x1,y0,z1);
+        i = edge(v, i, x1,y0,z1, x0,y0,z1);
+        i = edge(v, i, x0,y0,z1, x0,y0,z0);
+        i = edge(v, i, x0,y1,z0, x1,y1,z0);
+        i = edge(v, i, x1,y1,z0, x1,y1,z1);
+        i = edge(v, i, x1,y1,z1, x0,y1,z1);
+        i = edge(v, i, x0,y1,z1, x0,y1,z0);
+        i = edge(v, i, x0,y0,z0, x0,y1,z0);
+        i = edge(v, i, x1,y0,z0, x1,y1,z0);
+        i = edge(v, i, x1,y0,z1, x1,y1,z1);
+        i = edge(v, i, x0,y0,z1, x0,y1,z1);
+
+        int[] colors = new int[12];
+        for (int c = 0; c < 12; ++c) colors[c] = 0x000000;
+
+        int cmd = Graphics3D.PRIMITVE_LINES |
+                  Graphics3D.PDATA_NORMAL_NONE |
+                  Graphics3D.PDATA_TEXURE_COORD_NONE |
+                  Graphics3D.PDATA_COLOR_PER_FACE |
+                  Graphics3D.PATTR_BLEND_NORMAL;
+        try {
+            g3d.renderPrimitives(texture, 0, 0, layout, effectOpaque,
+                cmd, 12, v, nrm, null, colors);
+        } catch (Throwable t) {
+            // Some devices may not support line primitives; ignore.
+        }
+    }
+
+    private int edge(int[] v, int i, float ax, float ay, float az,
+                                     float bx, float by, float bz) {
+        v[i++] = (int) (ax * BLOCK); v[i++] = (int) (ay * BLOCK); v[i++] = (int) (az * BLOCK);
+        v[i++] = (int) (bx * BLOCK); v[i++] = (int) (by * BLOCK); v[i++] = (int) (bz * BLOCK);
+        return i;
     }
 }

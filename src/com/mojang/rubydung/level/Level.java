@@ -30,6 +30,7 @@ public class Level {
     private int[] lightDepths;
     private Vector levelListeners = new Vector();
     private Random random = new Random();
+    public final Vector mobs = new Vector();
     private int unprocessed = 0;
 
     private static final String STORE_NAME = "mc_classic_level";
@@ -44,6 +45,16 @@ public class Level {
         if (!mapLoaded) {
             this.blocks = new LevelGen(w, h, d).generateMap();
         }
+        this.calcLightDepths(0, 0, w, h);
+    }
+
+    /** Multiplayer: build a level from blocks received from the server (no RMS, no gen). */
+    public Level(int w, int h, int d, byte[] blocks) {
+        this.width = w;
+        this.height = h;
+        this.depth = d;
+        this.blocks = (blocks != null && blocks.length == w * h * d) ? blocks : new byte[w * h * d];
+        this.lightDepths = new int[w * h];
         this.calcLightDepths(0, 0, w, h);
     }
 
@@ -228,15 +239,22 @@ public class Level {
     }
 
     public float getBrightness(int x, int y, int z) {
-        float dark = 0.8f;
+        float dark = 0.6f;
+        float mid = 0.8f;
         float light = 1.0f;
         if (x < 0 || y < 0 || z < 0 || x >= this.width || y >= this.depth || z >= this.height) {
             return light;
         }
-        if (y < this.lightDepths[x + z * this.width]) {
-            return dark;
+        int depth = this.lightDepths[x + z * this.width];
+        if (y >= depth) {
+            return light;
         }
-        return light;
+        // One block below the sky-light boundary gets a softer shadow,
+        // deeper blocks get the full dark value (cheap two-step gradient).
+        if (y == depth - 1) {
+            return mid;
+        }
+        return dark;
     }
 
     public void tick() {
