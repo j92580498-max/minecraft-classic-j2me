@@ -1,0 +1,11 @@
+# Build artifacts
+/build/
+/stubs-build/
+/preverified/
+
+# Keep dist/ outputs (the shippable JAR/JAD) tracked so people can download them
+# (comment the next two lines out if you'd rather not commit binaries)
+
+# OS / editor cruft
+.DS_Store
+*.swp
