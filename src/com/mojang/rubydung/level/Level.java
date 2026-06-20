@@ -63,7 +63,7 @@ public class Level {
                 ((LevelListener) this.levelListeners.elementAt(i)).allChanged();
             }
             return true;
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return false;
         } finally {
             if (rs != null) {
@@ -195,6 +195,36 @@ public class Level {
             return false;
         }
         return tile.isSolid();
+    }
+
+    /** Tile object at a coord, or null for air / out of bounds. */
+    public Tile getTileObj(int x, int y, int z) {
+        return Tile.tiles[this.getTile(x, y, z)];
+    }
+
+    /**
+     * Whether the tile at (x,y,z) fully occludes an adjacent face, so the
+     * neighbour can cull that face. Only full opaque cubes occlude; glass,
+     * leaves, water, slabs, sprites and air never do.
+     */
+    public boolean occludes(int x, int y, int z) {
+        Tile tile = Tile.tiles[this.getTile(x, y, z)];
+        if (tile == null) return false;
+        return tile.occludes();
+    }
+
+    /**
+     * Whether the neighbour at (x,y,z) hides the face of a block whose id is
+     * selfId. Hidden if the neighbour is a full opaque cube, or it is the same
+     * block id (non-sprite) so adjacent glass / water / leaves merge cleanly.
+     */
+    public boolean hidesFace(int x, int y, int z, int selfId) {
+        int nid = this.getTile(x, y, z);
+        if (nid == 0) return false;
+        Tile tile = Tile.tiles[nid];
+        if (tile == null) return false;
+        if (tile.occludes()) return true;
+        return nid == selfId && !tile.isSprite();
     }
 
     public float getBrightness(int x, int y, int z) {
