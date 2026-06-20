@@ -47,6 +47,7 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
     private Player player;
     private Graphics3D g3d;
     private Texture texture;
+    private Texture mobTexture;
     private HitResult hitResult;
 
     private volatile boolean running = false;
@@ -111,10 +112,12 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
             g3d = new Graphics3D();
             byte[] texBytes = readResource("/terrain.bmp");
             texture = new Texture(texBytes, true);
+            byte[] mobTexBytes = readResource("/char.bmp");
+            mobTexture = new Texture(mobTexBytes, true);
 
             level = new Level(128, 128, 64);
             player = new Player(level);
-            renderer = new WorldRenderer(level, g3d, texture);
+            renderer = new WorldRenderer(level, g3d, texture, mobTexture);
             loadPlayerState();
         } catch (Throwable t) {
             t.printStackTrace();
@@ -178,12 +181,12 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
 
     private void tickMobs() {
         java.util.Vector mobs = level.mobs;
-        // spawn up to a cap, near the player but not on top of them
-        if (++spawnTimer >= 60) {
+        // Classic-like pacing: mobs appear infrequently and stay capped low.
+        if (++spawnTimer >= 180) {
             spawnTimer = 0;
-            if (mobs.size() < 8) {
+            if (mobs.size() < 3) {
                 float a = rng.nextFloat() * 6.2831855f;
-                float r = 8.0f + rng.nextFloat() * 8.0f;
+                float r = 10.0f + rng.nextFloat() * 6.0f;
                 float sx = player.x + (float) Math.cos(a) * r;
                 float sz = player.z + (float) Math.sin(a) * r;
                 int ix = (int) sx, iz = (int) sz;
@@ -553,7 +556,7 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
             // swap to the server's world
             level = net.getLevel();
             player = new Player(level);
-            renderer = new WorldRenderer(level, g3d, texture);
+            renderer = new WorldRenderer(level, g3d, texture, mobTexture);
             hitResult = null;
             connecting = false;
         }
@@ -684,7 +687,7 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
     private void newWorld() {
         level = new Level(128, 128, 64);
         player = new Player(level);
-        renderer = new WorldRenderer(level, g3d, texture);
+        renderer = new WorldRenderer(level, g3d, texture, mobTexture);
         hitResult = null;
         particles.removeAllElements();
         showMenu = false;
@@ -702,7 +705,7 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
     private void loadGame() {
         if (level != null && level.load()) {
             loadPlayerState();
-            renderer = new WorldRenderer(level, g3d, texture);
+            renderer = new WorldRenderer(level, g3d, texture, mobTexture);
             toast = "World loaded";
         } else {
             toast = "No saved world";

@@ -59,6 +59,7 @@ cp -r "$PRE"/* "$STAGE"/ 2>/dev/null || true
 # If ProGuard produced a jar instead of a dir, unzip it.
 if [ -f "$PRE" ]; then unzip -oq "$PRE" -d "$STAGE"; fi
 cp res/terrain.bmp "$STAGE"/terrain.bmp
+cp res/char.bmp "$STAGE"/char.bmp
 cp res/icon.png "$STAGE"/icon.png
 
 "$JAR" cfm "$DIST/$NAME.jar" res/MANIFEST.MF -C "$STAGE" .

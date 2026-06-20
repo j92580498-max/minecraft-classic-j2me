@@ -87,7 +87,7 @@ public class Mob {
             float dx = target.x - this.x;
             float dz = target.z - this.z;
             float dist2 = dx * dx + dz * dz;
-            if (dist2 < 256.0f) {     // within 16 blocks  chase
+            if (dist2 < 36.0f) {     // only within ~6 blocks lean toward player
                 this.moveYaw = (float) (atan2(dz, dx) * 180.0 / Math.PI) - 90.0f;
                 this.forward = 1.0f;
                 chasing = true;
@@ -110,7 +110,7 @@ public class Mob {
         this.yRot += dyaw;
 
         // random jump
-        boolean jump = this.onGround && (random.nextInt(50) == 0 || (chasing && random.nextInt(20) == 0));
+        boolean jump = this.onGround && (random.nextInt(50) == 0 || (chasing && random.nextInt(40) == 0));
         if (jump) this.yd = 0.12f;
 
         moveRelative(0.0f, this.forward, this.onGround ? 0.02f : 0.005f);
