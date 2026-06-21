@@ -6,4 +6,4 @@ MicroEdition-Profile: MIDP-2.0
 MicroEdition-Configuration: CLDC-1.1
 MIDlet-Permissions: javax.microedition.io.Connector.socket
 MIDlet-Jar-URL: mc-c0.0.11a.jar
-MIDlet-Jar-Size: 61069
+MIDlet-Jar-Size: 57519

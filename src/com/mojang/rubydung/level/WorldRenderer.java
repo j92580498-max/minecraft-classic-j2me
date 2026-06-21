@@ -1,7 +1,6 @@
 package com.mojang.rubydung.level;
 
 import com.mojang.rubydung.HitResult;
-import com.mojang.rubydung.Mob;
 import com.mojang.rubydung.Particle;
 import com.mojang.rubydung.Player;
 import com.mojang.rubydung.level.tile.Tile;
@@ -42,7 +41,6 @@ public class WorldRenderer {
 
     private final Level level;
     private final Texture texture;
-    private final Texture mobTexture;
     private final Graphics3D g3d;
     private final FigureLayout layout;
     private final Effect3D effectOpaque;
@@ -58,7 +56,6 @@ public class WorldRenderer {
     private static final int[] EMPTY_TC = new int[0];
     private int quadCount;
     private int curCommand;
-    private boolean useMobTexture = false;
 
     private final int cmdOpaque =
         Graphics3D.PRIMITVE_QUADS |
@@ -89,11 +86,10 @@ public class WorldRenderer {
         Graphics3D.PDATA_COLOR_PER_FACE |
         Graphics3D.PATTR_BLEND_NORMAL;
 
-    public WorldRenderer(Level level, Graphics3D g3d, Texture texture, Texture mobTexture) {
+    public WorldRenderer(Level level, Graphics3D g3d, Texture texture) {
         this.level = level;
         this.g3d = g3d;
         this.texture = texture;
-        this.mobTexture = mobTexture;
         this.layout = new FigureLayout();
         this.effectOpaque = new Effect3D(null, Effect3D.NORMAL_SHADING, false, null);
         this.effectTrans = new Effect3D(null, Effect3D.NORMAL_SHADING, true, null);
@@ -296,31 +292,9 @@ public class WorldRenderer {
         }
         Effect3D fx = (curCommand == cmdTrans) ? effectTrans : effectOpaque;
         int[] texArg = (curCommand == cmdFlat) ? new int[0] : texs;
-        Texture activeTex = (useMobTexture && mobTexture != null) ? mobTexture : texture;
-        g3d.renderPrimitives(activeTex, 0, 0, layout, fx,
+        g3d.renderPrimitives(texture, 0, 0, layout, fx,
             curCommand, quadCount, verts, nrm, texArg, cols);
         quadCount = 0;
-    }
-
-    /**
-     * Render each live mob as a small set of flat-shaded boxes (head, body,
-     * two arms, two legs) with a simple walk swing. Boxes are built in the
-     * mob's local space then rotated by body yaw around its position.
-     */
-    public void renderMobs(java.util.Vector mobs, float alpha) {
-        if (mobs == null || mobs.size() == 0) return;
-        // Mobs use the 64x32 character skin atlas, color-keyed (alpha-test)
-        // so transparent skin texels drop out like ClassiCube's humanoid.
-        useMobTexture = true;
-        beginBatch(cmdSprite);
-        for (int i = 0; i < mobs.size(); ++i) {
-            Mob m = (Mob) mobs.elementAt(i);
-            if (m.isDead()) continue;
-            renderMob(m, alpha);
-        }
-        flushBatch();
-        useMobTexture = false;
-        curCommand = cmdSprite;
     }
 
     public void renderNetPlayers(com.mojang.rubydung.net.NetPlayer[] players, float alpha) {
@@ -355,125 +329,6 @@ public class WorldRenderer {
         box(mx, mz, feetY, feetY + 0.75f, 0.1f, 0.1f, 0.125f, 0f, sin, cos, legs);
         box(mx, mz, feetY + 0.75f, feetY + 1.45f, 0.1f, 0.1f, -0.36f, 0f, sin, cos, skin);
         box(mx, mz, feetY + 0.75f, feetY + 1.45f, 0.1f, 0.1f, 0.36f, 0f, sin, cos, skin);
-    }
-
-    private void renderMob(Mob m, float alpha) {
-        float mx = m.xo + (m.x - m.xo) * alpha;
-        float my = m.yo + (m.y - m.yo) * alpha;
-        float mz = m.zo + (m.z - m.zo) * alpha;
-        // feet sit at my - 0.9 (H); model is ~1.8 tall.
-        float feetY = my - 0.9f;
-
-        double yaw = m.yRot * Math.PI / 180.0;
-        float sin = (float) Math.sin(yaw);
-        float cos = (float) Math.cos(yaw);
-
-        // limb swing
-        if (m.animSpeed > 1.2f) m.animSpeed = 1.2f;
-        float swing = (float) Math.sin(m.animPos) * 0.6f * m.animSpeed;
-        float swing2 = (float) Math.sin(m.animPos + Math.PI) * 0.6f * m.animSpeed;
-
-        // Hurt flash tints the whole skin red, otherwise full-bright white.
-        int tint = m.hurtTime > 0 ? 0xFF6050 : 0xFFFFFF;
-
-        // ClassiCube humanoid skin layout (64x32), scaled to a ~1.8-block model.
-        // Pixel boxes (w,h,d) match the vanilla Steve UVs:
-        //   head 8x8x8 @tex(0,0); torso 8x12x4 @tex(16,16);
-        //   arms 4x12x4 @tex(40,16); legs 4x12x4 @tex(0,16).
-        // World half-extents derived from those pixel sizes (1 px = 1/16 block,
-        // model is ~2 blocks tall) keep proportions faithful to ClassiCube.
-
-        // Head: 8x8x8 cube centred, sitting on top of the torso (top at 2.0).
-        skinBox(mx, mz, feetY + 1.5f, feetY + 2.0f, 0.25f, 0.25f, 0f, 0f, sin, cos,
-                tint, 0, 0, 8, 8, 8);
-        // Torso: 8x12x4, top at 1.5, bottom at 0.75.
-        skinBox(mx, mz, feetY + 0.75f, feetY + 1.5f, 0.25f, 0.125f, 0f, 0f, sin, cos,
-                tint, 16, 16, 8, 12, 4);
-        // Legs: 4x12x4 each, offset left/right, swinging opposite each other.
-        skinBox(mx, mz, feetY, feetY + 0.75f, 0.125f, 0.125f, -0.125f, swing, sin, cos,
-                tint, 0, 16, 4, 12, 4);
-        skinBox(mx, mz, feetY, feetY + 0.75f, 0.125f, 0.125f, 0.125f, swing2, sin, cos,
-                tint, 0, 16, 4, 12, 4);
-        // Arms: 4x12x4 each, at shoulder height, swinging opposite the legs.
-        skinBox(mx, mz, feetY + 0.75f, feetY + 1.5f, 0.125f, 0.125f, -0.375f, swing2, sin, cos,
-                tint, 40, 16, 4, 12, 4);
-        skinBox(mx, mz, feetY + 0.75f, feetY + 1.5f, 0.125f, 0.125f, 0.375f, swing, sin, cos,
-                tint, 40, 16, 4, 12, 4);
-    }
-
-    /**
-     * Emit one textured box of a humanoid limb using the 64x32 skin atlas.
-     * cx/cz is the mob centre; y0/y1 the world vertical span; hw/hd the world
-     * half-width/depth; ox a sideways offset (local X); zswing a forward Z
-     * offset for the walk cycle; sin/cos rotate local (X,Z) by body yaw.
-     * (tx,ty) is the top-left skin pixel of the box's unwrap; (pw,ph,pd) are
-     * the box pixel dimensions, laid out like Minecraft skins:
-     *   top/bottom across the top row, then front/right/back/left in a strip.
-     */
-    private void skinBox(float cx, float cz, float y0, float y1,
-                         float hw, float hd, float ox, float zswing,
-                         float sin, float cos, int tint,
-                         int tx, int ty, int pw, int ph, int pd) {
-        float lx0 = ox - hw, lx1 = ox + hw;
-        float lz0 = zswing - hd, lz1 = zswing + hd;
-        // world corners (after yaw): a=(-,-) b=(+,-) c=(+,+) d=(-,+)
-        float ax = cx + lx0 * cos - lz0 * sin, az = cz + lz0 * cos + lx0 * sin;
-        float bx = cx + lx1 * cos - lz0 * sin, bz = cz + lz0 * cos + lx1 * sin;
-        float cx2 = cx + lx1 * cos - lz1 * sin, cz2 = cz + lz1 * cos + lx1 * sin;
-        float dx = cx + lx0 * cos - lz1 * sin, dz = cz + lz1 * cos + lx0 * sin;
-
-        // Skin UV strip (standard Minecraft box unwrap):
-        //   row0:  [pd][pw top][pw bottom]
-        //   row1:  [pd left][pw front][pd right][pw back]
-        int uTopX = tx + pd,           uTopY = ty;
-        int uBotX = tx + pd + pw,      uBotY = ty;
-        int uFrontX = tx + pd,         uFrontY = ty + pd;
-        int uRightX = tx,              uRightY = ty + pd;
-        int uBackX = tx + pd + pw + pd, uBackY = ty + pd;
-        int uLeftX = tx + pd + pw,     uLeftY = ty + pd;
-
-        // top (y1)
-        skinQuad(tint, uTopX, uTopY, pw, pd,
-                 ax, y1, az,  bx, y1, bz,  cx2, y1, cz2,  dx, y1, dz);
-        // bottom (y0)
-        skinQuad(tint, uBotX, uBotY, pw, pd,
-                 dx, y0, dz,  cx2, y0, cz2,  bx, y0, bz,  ax, y0, az);
-        // front side (a-b)
-        skinQuad(tint, uFrontX, uFrontY, pw, ph,
-                 ax, y1, az,  bx, y1, bz,  bx, y0, bz,  ax, y0, az);
-        // right side (b-c)
-        skinQuad(tint, uRightX, uRightY, pd, ph,
-                 bx, y1, bz,  cx2, y1, cz2, cx2, y0, cz2, bx, y0, bz);
-        // back side (c-d)
-        skinQuad(tint, uBackX, uBackY, pw, ph,
-                 cx2, y1, cz2, dx, y1, dz,  dx, y0, dz,  cx2, y0, cz2);
-        // left side (d-a)
-        skinQuad(tint, uLeftX, uLeftY, pd, ph,
-                 dx, y1, dz,  ax, y1, az,  ax, y0, az,  dx, y0, dz);
-    }
-
-    /** Emit one quad with explicit skin-pixel UV rectangle (top-left + size). */
-    private void skinQuad(int color, int ux, int uy, int uw, int uh,
-                          float ax, float ay, float az,
-                          float bx, float by, float bz,
-                          float cx, float cy, float cz,
-                          float dx, float dy, float dz) {
-        if (quadCount >= BATCH) flushBatch();
-        int vi = quadCount * 12;
-        vc[vi]      = (int) (ax * BLOCK); vc[vi + 1]  = (int) (ay * BLOCK); vc[vi + 2]  = (int) (az * BLOCK);
-        vc[vi + 3]  = (int) (bx * BLOCK); vc[vi + 4]  = (int) (by * BLOCK); vc[vi + 5]  = (int) (bz * BLOCK);
-        vc[vi + 6]  = (int) (cx * BLOCK); vc[vi + 7]  = (int) (cy * BLOCK); vc[vi + 8]  = (int) (cz * BLOCK);
-        vc[vi + 9]  = (int) (dx * BLOCK); vc[vi + 10] = (int) (dy * BLOCK); vc[vi + 11] = (int) (dz * BLOCK);
-        int u0 = ux, v0 = uy, u1 = ux + uw, v1 = uy + uh;
-        if (u1 > 255) u1 = 255;
-        if (v1 > 255) v1 = 255;
-        int ti = quadCount * 8;
-        tc[ti]     = u0; tc[ti + 1] = v1;
-        tc[ti + 2] = u0; tc[ti + 3] = v0;
-        tc[ti + 4] = u1; tc[ti + 5] = v0;
-        tc[ti + 6] = u1; tc[ti + 7] = v1;
-        col[quadCount] = color;
-        quadCount++;
     }
 
     /**

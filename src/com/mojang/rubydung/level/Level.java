@@ -30,7 +30,6 @@ public class Level {
     private int[] lightDepths;
     private Vector levelListeners = new Vector();
     private Random random = new Random();
-    public final Vector mobs = new Vector();
     private int unprocessed = 0;
 
     private static final String STORE_NAME = "mc_classic_level";

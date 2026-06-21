@@ -87,12 +87,27 @@ Reimplemented for the phone:
 | `1` / `3` | turn left / right |
 | `7` / `9` | look up / down |
 | `5` | jump |
-| `*` | break targeted block |
+| `*` | attack / break block |
 | `#` | place selected block |
 | `0` | cycle selected block type (rock → dirt → stone brick → wood → bush) |
 
 The D-pad also works (up/down to move, left/right to turn, fire to break). The
 world auto-saves on exit (RMS).
+
+## Survival mode
+
+This build runs in **survival** (like Minecraft **Alpha 1.0.1_01**) instead of
+the old creative/free-build mode:
+
+- **10 hearts (20 HP)** shown bottom-right, with a brief invulnerability window
+  after each hit.
+- **Fall damage** — `ceil(fallDistance - 3)` damage on landing, exactly like Alpha.
+- **Drowning** — an air supply runs down underwater (bubble row above the hearts);
+  at zero air you take 2 damage per second.
+- **Lava** burns you continuously, and falling into the void (below y -64) is fatal.
+- **Death + auto-respawn** — a "You died!" overlay shows, then you respawn at a
+  fresh spawn point with full health.
+- **No mobs** — zombies have been removed; the world is unpopulated.
 
 ## Project layout
 

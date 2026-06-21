@@ -42,14 +42,14 @@ Output: `dist/mc-c0.0.11a.jar` + `dist/mc-c0.0.11a.jad`.
 
 ## Map of the code
 - `RubyDungMIDlet` - MIDlet entry; passes itself to GameCanvas for Display access (multiplayer text entry).
-- `GameCanvas` - MIDP Canvas, game loop, keypad input; in-game menu (resume/save/load/new/help/multiplayer), inventory picker, block break/place, particle + mob + net-player ticking, multiplayer join flow.
-- `level/Level` - Classic 0.0.11a world: `getTile/setTile/isLit/isSolidTile`, light columns, random tile ticks, RMS save/load, `mobs` Vector. Second constructor accepts pre-loaded blocks (network maps). Generates via `LevelGen`.
+- `GameCanvas` - MIDP Canvas, game loop, keypad input; in-game menu (resume/save/load/new/help/multiplayer), inventory picker, block break/place, survival HUD (hearts + air bubbles, death/respawn overlay), particle + net-player ticking, multiplayer join flow.
+- `level/Level` - Classic 0.0.11a world: `getTile/setTile/isLit/isSolidTile`, light columns, random tile ticks, RMS save/load. Second constructor accepts pre-loaded blocks (network maps). Generates via `LevelGen`.
 - `level/LevelGen` + `level/NoiseMap` - fractal terrain + cave carving (verbatim).
 - `level/tile/Tile` + `GrassTile`/`DirtTile`/`Bush` - block set, per-face textures, tick behaviour. `Tile.tiles[id]` registry.
-- `level/WorldRenderer` - Mascot Capsule renderer; exposed solid faces as textured quads, sprites as crossed quads, flat-shaded cube mobs/net-players, billboarded break particles, and a 3D wireframe block highlight (`renderHit`).
+- `level/WorldRenderer` - Mascot Capsule renderer; exposed solid faces as textured quads, sprites as crossed quads, flat-shaded cube net-players, billboarded break particles, and a 3D wireframe block highlight (`renderHit`).
 - `RayCast` - DDA voxel pick (replaces GL selection buffer).
-- `Player`, `phys/AABB`, `Timer` - movement / collision / fixed-step timing.
-- `Mob` - zombie: humanoid AABB, gravity/collision, wander + chase AI, hurt/death; rendered as colour cubes.
+- `Player` - survival player: movement / collision / fixed-step timing, plus Alpha-style health (20 HP), fall damage, drowning (air supply), lava burn, void death, and death + auto-respawn.
+- `phys/AABB` - swept-axis collision clipping.
 - `Particle` - block-break shard: gravity, ground collision, short life; samples the broken block's texture.
 - `net/NetworkClient` - Classic / ClassiCube multiplayer client (vanilla protocol, no CPE). Own receive thread, login handshake, gzip level transfer, entity add/move/remove, chat, set-block; sends position + block edits. Packet sizes verbatim from ClassiCube `src/Protocol.c`.
 - `net/NetPlayer` - remote player (interpolated position + yaw/pitch).
@@ -57,7 +57,7 @@ Output: `dist/mc-c0.0.11a.jar` + `dist/mc-c0.0.11a.jad`.
 
 ## Controls (numeric keypad)
 - 2/8 forward/back, 4/6 strafe, 1/3 turn (held = continuous), 7/9 look up/down (held), 5 jump
-- `*` break block (also attacks mobs in reach), `#` place selected block, `0` cycle block type
+- `*` break block, `#` place selected block, `0` cycle block type
 - Left soft key (or FIRE) opens the in-game menu; right soft key opens the inventory picker
 - D-pad also moves/turns; menu: 2/8 navigate, 5/FIRE select
 
@@ -68,11 +68,12 @@ Output: `dist/mc-c0.0.11a.jar` + `dist/mc-c0.0.11a.jad`.
 - Verified end-to-end against a mock server: login, level transfer + gunzip, entity spawn, chat, and client position/set-block sends.
 
 ## Done in this pass
-- Mobs (zombies) with AI + flat-cube rendering and melee.
+- Survival mode (Alpha 1.0.1_01 style): 20 HP / 10 hearts, fall damage `ceil(fall-3)`, drowning air supply, lava burn, void death, death + auto-respawn.
+- Removed zombies/mobs entirely (Mob class deleted, no spawning/rendering, `char.bmp` skin no longer packaged).
 - Block-break particles.
 - 3D targeted-block highlight (`renderHit`).
 - Improved column lighting (darker, slightly graded shadows).
-- In-game menu + world save/load + player-state persistence.
+- In-game menu + world save/load + player-state persistence (now includes health + air).
 - Continuous (held-key) look controls in the spirit of the Symbian/ClassiCube port.
 - Classic multiplayer client (connect, map download, remote players, chat, synced block edits).
 
@@ -80,4 +81,4 @@ Output: `dist/mc-c0.0.11a.jar` + `dist/mc-c0.0.11a.jad`.
 - Interpolate remote player limbs / model yaw; render their names.
 - CPE extensions (ExtInfo/ExtEntry) for custom blocks and longer names.
 - Chunk caching of quad batches to cut per-frame rebuild cost.
-- Tune RADIUS/BATCH, mob cap, and perspective on real hardware.
+- Tune RADIUS/BATCH and perspective on real hardware.

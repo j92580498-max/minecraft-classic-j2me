@@ -47,7 +47,6 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
     private Player player;
     private Graphics3D g3d;
     private Texture texture;
-    private Texture mobTexture;
     private HitResult hitResult;
 
     private volatile boolean running = false;
@@ -112,12 +111,10 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
             g3d = new Graphics3D();
             byte[] texBytes = readResource("/terrain.bmp");
             texture = new Texture(texBytes, true);
-            byte[] mobTexBytes = readResource("/char.bmp");
-            mobTexture = new Texture(mobTexBytes, true);
 
             level = new Level(128, 128, 64);
             player = new Player(level);
-            renderer = new WorldRenderer(level, g3d, texture, mobTexture);
+            renderer = new WorldRenderer(level, g3d, texture);
             loadPlayerState();
         } catch (Throwable t) {
             t.printStackTrace();
@@ -171,39 +168,14 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
         player.kReset = kReset;
         level.tick();
         player.tick();
-        tickMobs();
+        tickParticles();
         hitResult = RayCast.pick(level, player, 4.0f);
     }
 
-    private int spawnTimer = 0;
     private final java.util.Random rng = new java.util.Random();
     private final java.util.Vector particles = new java.util.Vector();
 
-    private void tickMobs() {
-        java.util.Vector mobs = level.mobs;
-        // Classic-like pacing: mobs appear infrequently and stay capped low.
-        if (++spawnTimer >= 180) {
-            spawnTimer = 0;
-            if (mobs.size() < 3) {
-                float a = rng.nextFloat() * 6.2831855f;
-                float r = 10.0f + rng.nextFloat() * 6.0f;
-                float sx = player.x + (float) Math.cos(a) * r;
-                float sz = player.z + (float) Math.sin(a) * r;
-                int ix = (int) sx, iz = (int) sz;
-                if (ix > 0 && iz > 0 && ix < level.width - 1 && iz < level.height - 1) {
-                    int sy = level.depth - 1;
-                    while (sy > 1 && level.getTile(ix, sy - 1, iz) == 0) sy--;
-                    if (sy < level.depth - 2) {
-                        mobs.addElement(new Mob(level, sx, sy + 1.5f, sz));
-                    }
-                }
-            }
-        }
-        for (int i = mobs.size() - 1; i >= 0; --i) {
-            Mob m = (Mob) mobs.elementAt(i);
-            m.tick(player);
-            if (m.isDead()) mobs.removeElementAt(i);
-        }
+    private void tickParticles() {
         for (int i = particles.size() - 1; i >= 0; --i) {
             Particle pa = (Particle) particles.elementAt(i);
             pa.tick();
@@ -226,7 +198,6 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
 
         g3d.bind(g);
         renderer.render(player, timer.a, w / 2, h / 2);
-        renderer.renderMobs(level.mobs, timer.a);
         if (multiplayer && net != null) renderer.renderNetPlayers(net.getPlayers(), timer.a);
         renderer.renderParticles(particles, player, timer.a);
         if (hitResult != null) renderer.renderHit(hitResult);
@@ -238,9 +209,11 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
         g.drawLine(w / 2, h / 2 - 4, w / 2, h / 2 + 4);
 
         drawHud(g, w, h);
+        drawHealth(g, w, h);
         if (multiplayer && net != null) drawChat(g, w, h);
         if (showInventory) drawInventory(g, w, h);
         if (showMenu) drawMenu(g, w, h);
+        if (player != null && player.isDead()) drawDeath(g, w, h);
     }
 
     private void drawHud(Graphics g, int w, int h) {
@@ -263,6 +236,59 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
             g.setColor(0xFFFFFF);
             g.drawString(hudLine, w / 2, 14, Graphics.HCENTER | Graphics.TOP);
         }
+    }
+
+    /** Survival HUD: 10 hearts (2 HP each) bottom-right, air bubbles above when underwater. */
+    private void drawHealth(Graphics g, int w, int h) {
+        if (player == null) return;
+        int hp = player.health;
+        int sz = 6;        // heart cell size
+        int gap = 1;
+        int total = 10;
+        int rowW = total * (sz + gap);
+        int x0 = w - rowW - 2;
+        int y0 = h - sz - 2;
+
+        for (int i = 0; i < total; ++i) {
+            int hx = x0 + i * (sz + gap);
+            int hpForHeart = hp - i * 2;
+            // empty heart shadow
+            g.setColor(0x401010);
+            g.fillRect(hx, y0, sz, sz);
+            if (hpForHeart >= 2) {
+                g.setColor(0xFF2020);
+                g.fillRect(hx, y0, sz, sz);
+            } else if (hpForHeart == 1) {
+                g.setColor(0xFF2020);
+                g.fillRect(hx, y0, sz / 2, sz);
+            }
+            g.setColor(0x000000);
+            g.drawRect(hx, y0, sz, sz);
+        }
+
+        // Air bubbles row above hearts while underwater.
+        if (player.inWater && player.air < Player.MAX_AIR) {
+            int bubbles = (player.air * 10 + Player.MAX_AIR - 1) / Player.MAX_AIR;
+            int by0 = y0 - sz - 2;
+            for (int i = 0; i < bubbles; ++i) {
+                int bx = x0 + i * (sz + gap);
+                g.setColor(0x40A0FF);
+                g.fillRect(bx, by0, sz, sz);
+                g.setColor(0x000000);
+                g.drawRect(bx, by0, sz, sz);
+            }
+        }
+    }
+
+    /** Death overlay with an auto-respawn countdown. */
+    private void drawDeath(Graphics g, int w, int h) {
+        g.setColor(0x700000);
+        for (int y = 0; y < h; y += 2) g.drawLine(0, y, w, y);
+        g.setColor(0xFFFFFF);
+        g.drawString("You died!", w / 2, h / 2 - 12, Graphics.HCENTER | Graphics.TOP);
+        int left = (40 - player.deathTime + 19) / 20;
+        if (left < 0) left = 0;
+        g.drawString("Respawning...", w / 2, h / 2 + 2, Graphics.HCENTER | Graphics.TOP);
     }
 
     private void drawInventory(Graphics g, int w, int h) {
@@ -556,7 +582,7 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
             // swap to the server's world
             level = net.getLevel();
             player = new Player(level);
-            renderer = new WorldRenderer(level, g3d, texture, mobTexture);
+            renderer = new WorldRenderer(level, g3d, texture);
             hitResult = null;
             connecting = false;
         }
@@ -599,7 +625,6 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
     }
 
     private void breakBlock() {
-        if (attackMob()) return;
         if (hitResult == null) return;
         int id = level.getTile(hitResult.x, hitResult.y, hitResult.z);
         if (id == 0) return;
@@ -621,47 +646,6 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
             float pz = bz + rng.nextFloat();
             particles.addElement(new Particle(level, px, py, pz, 0f, 0f, 0f, tex));
         }
-    }
-
-    private boolean attackMob() {
-        java.util.Vector mobs = level.mobs;
-        if (mobs.isEmpty()) return false;
-        // ray from eye along look direction; hit the closest mob within 4 blocks
-        double yaw = player.yRot * Math.PI / 180.0;
-        double pitch = player.xRot * Math.PI / 180.0;
-        double cp = Math.cos(pitch);
-        float dx = (float) (-Math.sin(yaw) * cp);
-        float dy = (float) (-Math.sin(pitch));
-        float dz = (float) (Math.cos(yaw) * cp);
-        Mob best = null;
-        float bestT = 4.0f;
-        for (int i = 0; i < mobs.size(); ++i) {
-            Mob m = (Mob) mobs.elementAt(i);
-            if (m.health <= 0) continue;
-            float rx = m.x - player.x;
-            float ry = m.y - player.y;
-            float rz = m.z - player.z;
-            float t = rx * dx + ry * dy + rz * dz;   // projection onto look dir
-            if (t < 0.0f || t > bestT) continue;
-            float cx = player.x + dx * t;
-            float cy = player.y + dy * t;
-            float cz = player.z + dz * t;
-            float ddx = cx - m.x, ddy = cy - m.y, ddz = cz - m.z;
-            if (ddx * ddx + ddy * ddy + ddz * ddz < 0.7f) {
-                best = m;
-                bestT = t;
-            }
-        }
-        if (best != null) {
-            best.hurt(4);
-            // knockback in look direction
-            best.xd += dx * 0.3f;
-            best.zd += dz * 0.3f;
-            toast = best.health <= 0 ? "Zombie slain" : "Hit zombie";
-            toastUntil = System.currentTimeMillis() + 800;
-            return true;
-        }
-        return false;
     }
 
     private void placeBlock() {
@@ -687,7 +671,7 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
     private void newWorld() {
         level = new Level(128, 128, 64);
         player = new Player(level);
-        renderer = new WorldRenderer(level, g3d, texture, mobTexture);
+        renderer = new WorldRenderer(level, g3d, texture);
         hitResult = null;
         particles.removeAllElements();
         showMenu = false;
@@ -705,7 +689,7 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
     private void loadGame() {
         if (level != null && level.load()) {
             loadPlayerState();
-            renderer = new WorldRenderer(level, g3d, texture, mobTexture);
+            renderer = new WorldRenderer(level, g3d, texture);
             toast = "World loaded";
         } else {
             toast = "No saved world";
@@ -725,6 +709,16 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
                 player.z = in.readInt() / (float) PLAYER_SAVE_SCALE;
                 player.yRot = in.readInt() / (float) PLAYER_SAVE_SCALE;
                 player.xRot = in.readInt() / (float) PLAYER_SAVE_SCALE;
+                try {
+                    int hp = in.readInt();
+                    int air = in.readInt();
+                    if (hp < 1) hp = Player.MAX_HEALTH;
+                    if (hp > Player.MAX_HEALTH) hp = Player.MAX_HEALTH;
+                    if (air < 0) air = 0;
+                    if (air > Player.MAX_AIR) air = Player.MAX_AIR;
+                    player.health = hp;
+                    player.air = air;
+                } catch (Throwable ignore) {}
             }
             rs.closeRecordStore();
         } catch (Throwable t) {}
@@ -739,6 +733,8 @@ public class GameCanvas extends Canvas implements Runnable, CommandListener {
             out.writeInt((int) (player.z * PLAYER_SAVE_SCALE));
             out.writeInt((int) (player.yRot * PLAYER_SAVE_SCALE));
             out.writeInt((int) (player.xRot * PLAYER_SAVE_SCALE));
+            out.writeInt(player.health);
+            out.writeInt(player.air);
             out.close();
             byte[] data = baos.toByteArray();
             try { javax.microedition.rms.RecordStore.deleteRecordStore("mc_classic_player"); } catch (Throwable t) {}
