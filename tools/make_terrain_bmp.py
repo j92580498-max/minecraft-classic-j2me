@@ -6,6 +6,21 @@ im=Image.open(SRC).convert('RGBA')
 W,H=im.size
 print('atlas',W,H)
 
+# Mascot Capsule Micro3D V3 requires SQUARE, power-of-two textures.
+# A non-square atlas (e.g. 256x128) is sampled in a square UV space on the
+# device and comes out distorted/rotated. Pad to the next power-of-two square,
+# anchoring content top-left so existing pixel UV coordinates stay valid.
+side=max(W,H)
+p=1
+while p<side: p*=2
+side=p
+if (W,H)!=(side,side):
+    sq=Image.new('RGBA',(side,side),(0,0,0,0))
+    sq.paste(im,(0,0))
+    im=sq
+    W,H=side,side
+    print('padded to square',W,H)
+
 px=im.load()
 # Determine a transparency color-key. ClassiCube atlas uses alpha for sprites/glass.
 # MascotCapsule color-key = palette index 0. We map fully/most-transparent texels to index 0.
@@ -67,6 +82,6 @@ def write_bmp(path):
     print('wrote',path,filesize,'bytes')
 
 write_bmp('res/terrain.bmp')
-# also save the corrected source png for the repo
-Image.open(SRC).convert('RGBA').save('res/terrain.png')
+# also save the corrected (square) source png for the repo
+im.save('res/terrain.png')
 print('done')

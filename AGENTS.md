@@ -23,6 +23,13 @@ terrain generation with caves, light/shadow columns, and random tile updates
 - **`stubs/` (Mascot Capsule) MUST NOT be packaged into the JAR.** The phone
   provides those classes natively; shipping the empty stubs breaks 3D. The
   build compiles stubs to a separate dir used only on the compile classpath.
+- **Textures must be SQUARE, power-of-two.** Mascot Capsule Micro3D V3 samples
+  textures in a square UV space, so a non-square atlas (the Classic source is
+  256x128) renders distorted/rotated on device. `res/terrain.png` and
+  `res/terrain.bmp` are therefore padded to **256x256** with the atlas content
+  anchored in the top half and the bottom half left transparent. UV coords in
+  `WorldRenderer` are absolute pixels (tile index -> u/v), so the padding does
+  not shift any tile.
 - Target **Java 1.3 bytecode** (JDK 8 `-source/-target 1.3`), then **preverify**
   with ProGuard `-microedition` (adds CLDC StackMap attributes).
 - CLDC has **no** `ArrayList`/generics, **no** `Math.random()`, **no** file I/O.
