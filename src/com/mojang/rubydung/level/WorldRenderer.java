@@ -271,6 +271,8 @@ public class WorldRenderer {
         int v0 = (tex / 16) * TILE;
         int u1 = u0 + TILE;
         int v1 = v0 + TILE;
+        if (u1 > 255) u1 = 255;
+        if (v1 > 255) v1 = 255;
         int ti = quadCount * 8;
         tc[ti]     = u0; tc[ti + 1] = v1;
         tc[ti + 2] = u0; tc[ti + 3] = v0;
@@ -463,6 +465,8 @@ public class WorldRenderer {
         vc[vi + 6]  = (int) (cx * BLOCK); vc[vi + 7]  = (int) (cy * BLOCK); vc[vi + 8]  = (int) (cz * BLOCK);
         vc[vi + 9]  = (int) (dx * BLOCK); vc[vi + 10] = (int) (dy * BLOCK); vc[vi + 11] = (int) (dz * BLOCK);
         int u0 = ux, v0 = uy, u1 = ux + uw, v1 = uy + uh;
+        if (u1 > 255) u1 = 255;
+        if (v1 > 255) v1 = 255;
         int ti = quadCount * 8;
         tc[ti]     = u0; tc[ti + 1] = v1;
         tc[ti + 2] = u0; tc[ti + 3] = v0;
